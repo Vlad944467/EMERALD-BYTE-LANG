@@ -16,7 +16,7 @@
 #ifndef OPCODES_H
 #define OPCODES_H
 enum opcode {
-    OP_MOV,
+    OP_MOV=200,
     OP_ADD,
     OP_SUB,
     OP_INT_PRINT,
@@ -44,6 +44,18 @@ enum opcode {
     OP_INPUTF,
     OP_INPUTC,
     OP_IF,
-    OP_CM
+    OP_REPEAT,
+    OP_N,
+    OP_AC_INT,
+    OP_SETB,
+    OP_PRINTB,
+    OP_WHILE,
+    OP_SLEEP,
+    OP_PRINT,
+    OP_PRINTS,
+    OP_EXIT,
+    OP_CLEAR_SCREEN,
+    OP_PRINT_OS,
+    OPBITS
 };
 #endif
