@@ -14,13 +14,16 @@
  * limitations under the License.
  */
 #include "gvar.h"
+#include "platform.h"
 #include "opcodes.h"
+#include "lexcompiler.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <sys/ioctl.h>
-#include <linux/kd.h>
+char names_r[100][64];
+char values_r[100][64];
+int count_r = 0;
+int err_count=0;
 int mov(){
     int idx = arg2[0] - 'a';
     values[idx] = atoi(arg3);
@@ -56,45 +59,6 @@ int mul_num() {
 int div_num() {
     int result = atoi(arg2) / atoi(arg3);
     printf("%d\n", result);
-}
-void raz() {
-    arg2[0] = 0; arg3[0] = 0; arg4[0] = 0; arg5[0] = 0;
-    if (sscanf(s, "%89s %89s %89s %89s %89s", arg1,arg2,arg3,arg4,arg5) < 1) return;
-    int num = -1;
-    if (strcmp(arg1,"set")==0) { num = OP_MOV;
-    }else if(strcmp(arg1,"add")==0){ num = OP_ADD;
-    }else if(strcmp(arg1,"sub")==0){ num = OP_SUB;
-    }else if(strcmp(arg1,"int_print")==0){ num = OP_INT_PRINT;
-    }else if(strcmp(arg1,"print_c")==0){ num = OP_PRINT_C;
-    }else if(strcmp(arg1,"add_num")==0){ num = OP_ADD_NUM;
-    }else if(strcmp(arg1,"subt_num")==0){ num = OP_SUBT_NUM;
-    }else if(strcmp(arg1,"clear")==0){ num = OP_CLEAR;
-    }else if(strcmp(arg1,"mul_num")==0){ num = OP_MUL_NUM;
-    }else if(strcmp(arg1,"div_num")==0){ num = OP_DIV_NUM;
-    }else if(strcmp(arg1,"str")==0){ num = OP_STR;
-    }else if(strcmp(arg1,"print_str")==0){ num = OP_PRINT_STR;
-    }else if(strcmp(arg1,"fmov")==0){ num = OP_FMOV;
-    }else if(strcmp(arg1,"printfl")==0){ num = OP_PRINTFL;
-    }else if(strcmp(arg1,"movC")==0){ num = OP_MOVC;
-    }else if(strcmp(arg1,"printc")==0){ num = OP_PRINTC;
-    }else if(strcmp(arg1,"strlen")==0){ num = OP_STRLEN;
-    }else if(strcmp(arg1,"fadd")==0){ num = OP_FADD;
-    }else if(strcmp(arg1,"input_int")==0){ num = OP_INPUT_INT;
-    }else if(strcmp(arg1,"input_str")==0){ num = OP_INPUT_STR;
-    }else if(strcmp(arg1,"dec")==0){ num = OP_DEC;
-    }else if(strcmp(arg1,"inc")==0){ num = OP_INC;
-    }else if(strcmp(arg1,"copy")==0){ num = OP_COPY;
-    }else if(strcmp(arg1,"savev")==0){ num = OP_SAVEV;
-    }else if(strcmp(arg1,"loadv")==0){ num = OP_LOADV;
-    }else if(strcmp(arg1,"inputf")==0){ num = OP_INPUTF;
-    }else if(strcmp(arg1,"inputc")==0){ num = OP_INPUTC;
-    }else if(strcmp(arg1,"if")==0){ num = OP_IF;
-    }else if(strncmp(arg1,"//",2)==0){ num = OP_CM;
-    }else{printf("unknown: %s",arg1);}
-    code[cs++] = num;
-    code[cs++] = 0;
-    code[cs++] = 0;
-    strcpy(sa[arg_i],arg2);strcpy(sb[arg_i],arg3);arg_i++;
 }
 void load_sbc(const char *name) {
     FILE *f = fopen(name, "r");
@@ -133,7 +97,8 @@ int run(){
         pc += 3;
         strcpy(arg2, sa[pc/3-1]);
         strcpy(arg3,sb[pc/3-1]);
-
+        strcpy(arg4, sc[pc/3-1]);
+        strcpy(arg5,sd[pc/3-1]);
         if(o == OP_MOV){mov();
         }else if(o == OP_ADD){ add();
         }else if(o == OP_SUB){ sub();
@@ -207,15 +172,124 @@ int run(){
             scanf("%c", &cval[idx]);
             getchar();
         }else if(o == OP_IF) {
-            int idx = arg2[0] - 'a';
-            if (values[idx] != 0) {
-                char buf[90];
-                snprintf(buf, sizeof(buf), "%s %s %s", arg3, arg4, arg5);
-                strcpy(s, buf);
-                raz();
+            int a=0, b = atoi(arg4),istrue = 0;
+            if(!strcmp(arg2,"x")) a = values[0];
+            if(!strcmp(arg2,"y")) a = values[1];
+            if(!strcmp(arg3,">")) istrue=(a > b);
+            if(!strcmp(arg3,"<")) istrue=(a < b);
+            if(!strcmp(arg3,"==")) istrue=(a==b);
+            if(istrue){printf("%s\n",arg5);}
+            else{PLATFORM_COLOR_RED();printf("--VM: [ERR]: if: Unknown argument--\n\n");PLATFORM_COLOR_RESET();
+                PLATFORM_COLOR_GREEN();printf("--STR:\n %s %s %s %s %s--\n\n", arg1,arg2,arg3,arg4,arg5);PLATFORM_COLOR_RESET();return 1;
             }
-        }else if(o == OP_CM) {;}
-    }
+        }
+        else if(o == OP_REPEAT){
+            int count = atoi(arg2);
+            if(count <= 0){PLATFORM_COLOR_YELLOW();printf("\n--VM: [WARN]: repeat: bad count: %s--\n\n",arg2);PLATFORM_COLOR_RESET();}
+            else if(!strcasecmp(arg3,"print_c")){
+                for(int i=0;i < count;i++){ printf("%s\n",arg4); }
+            }
+            else if(!strcasecmp(arg3,"int_print")){
+                int idx = arg4[0] - 'a';
+                for(int i=0;i < count;i++){ printf("%d\n",values[idx]); }
+            }
+            else if(!strcasecmp(arg3,"print_str")){
+                int idx = arg4[0] - 'a';
+                for(int i = 0;i < count; i+=1){ printf("%s\n", strings[idx]); }
+            }
+            else{PLATFORM_COLOR_RED();printf("\n--VM: [ERR]: repeat: Unknown argument: %s--\n\n",arg3);PLATFORM_COLOR_RESET();return 1;}
+        }
+        else if(o == OP_N){puts("\n");}
+        else if(o == OP_AC_INT){
+            int inn = arg2[0] - 'a';
+            int inn2 = arg4[0] - 'a';
+            if(arg3[0]=='+'){ values[inn] = values[inn] + values[inn2]; }
+            else if(arg3[0]=='-'){ values[inn] = values[inn] - values[inn2]; }
+            else if(arg3[0]=='*'){values[inn] = values[inn] * values[inn2];}
+            else if(arg3[0]=='/'){
+                if(values[inn2]==0){PLATFORM_COLOR_YELLOW();printf("[WARN]: ac_int: Division by zero");PLATFORM_COLOR_RESET();}
+                values[inn] = values[inn] / values[inn2];
+            }else{PLATFORM_COLOR_RED();printf("\n--VM: [ERR]: ac_int: Unknown op: %s--\n",arg3);PLATFORM_COLOR_RESET();
+                PLATFORM_COLOR_GREEN();printf("--STR:\n  %s %s %s %s--\n\n",arg1,arg2,arg3,arg4);PLATFORM_COLOR_RESET();return 1;
+            }
+        }else if(o == OP_SETB){
+            int idx = arg2[0] - 'a';
+            bval[idx] = atoi(arg3);
+            if(bval[idx] != 0 && bval[idx] != 1){PLATFORM_COLOR_RED();printf("\n--VM: [ERR]: setb: bad value: %s. Use 0 or 1--\n\n", arg3);
+                PLATFORM_COLOR_RESET();
+            return 1;
+            }
+        }else if(o == OP_PRINTB){
+            int idx = arg2[0] - 'a';
+            printf("%d\n",bval[idx]);
+        }else if (o == OP_WHILE){
+            int idx = arg2[0] - 'a';
+            while(1) {
+                if(arg3[0] == '<' && !(values[idx] < atoi(arg4))){break;}
+                if(arg3[0] == '>' && !(values[idx] > atoi(arg4))){break;}
+                if(arg3[0] == '=' && !(values[idx] == atoi(arg4))){break;}
+
+                if(!strcasecmp(arg5,"int_print")){printf("%d\n",values[idx]);}
+                else{
+                    PLATFORM_COLOR_RED();
+                    printf("\n--VM: [ERR]: while: Unknown op: %s--\n",arg3);PLATFORM_COLOR_RESET();
+                    PLATFORM_COLOR_GREEN();printf("--STR:\n  %s %s %s %s %s--\n\n",arg1,arg2,arg3,arg4,arg5);
+                    PLATFORM_COLOR_RESET();return 1;
+                }
+            }
+        }else if (o==OP_SLEEP){
+            if(arg2[0]==0){
+                PLATFORM_COLOR_RED();
+                printf("\n--VM: [ERR]: sleep: need an argument: %s--\n",arg3);PLATFORM_COLOR_RESET();
+                PLATFORM_COLOR_GREEN();printf("--STR:\n  %s %s %s %s %s--\n\n",arg1,arg2,arg3,arg4,arg5);
+                PLATFORM_COLOR_RESET();return 1;
+            }
+            PLATFORM_SLEEP(atoi(arg2));
+        }else if(o==OP_PRINT){
+            if(!strcmp(arg3,"**")){
+                int count1 = atoi(arg4);
+                if(!strcmp(arg5,"nn")){
+                    for(int i=0;i<count1;i+=1){ printf("%s\n",arg2);
+                    }
+                }
+                else{
+                    for(int i=0;i<count1;i+=1){ printf("%s",arg2);
+                    }
+                }
+            }else if(!strcmp(arg3,"+")){printf("%d\n",atoi(arg2) + atoi(arg4));}
+            else if(!strcmp(arg3,"-")){printf("%d\n",atoi(arg2) - atoi(arg4));}
+            else if(!strcmp(arg3,"*")){printf("%d\n",atoi(arg2) * atoi(arg4));}
+            else if(!strcmp(arg3,"nn")){printf("%s\n",arg2);}
+            else if(!strcmp(arg3,"red")){
+                if(!strcmp(arg4,"nn")){PLATFORM_COLOR_RED();printf("%s\n",arg2);PLATFORM_COLOR_RESET();}
+                else{PLATFORM_COLOR_RED();printf("%s",arg2);PLATFORM_COLOR_RESET();}
+            }
+            else if(!strcmp(arg3,"green")){
+                if(!strcmp(arg4,"nn")){PLATFORM_COLOR_GREEN();printf("%s\n",arg2);PLATFORM_COLOR_RESET();}
+                else{PLATFORM_COLOR_GREEN();printf("%s",arg2);PLATFORM_COLOR_RESET();}
+            }else if(!strcmp(arg3,"yellow")){
+                if(!strcmp(arg4,"nn")){PLATFORM_COLOR_YELLOW();printf("%s\n",arg2);PLATFORM_COLOR_RESET();}
+                else{PLATFORM_COLOR_YELLOW();printf("%s",arg2);PLATFORM_COLOR_RESET();}
+            }
+            else{printf("%s",arg2);}
+        }else if(o ==OP_PRINTS){printf("%s %s %s %s ",arg2,arg3,arg4,arg5);}
+        else if(o==OP_EXIT){
+            if(!strcasecmp(arg2,"true")){exit(1);}
+            else if(!strcasecmp(arg2,"false")){exit(0);}
+            else if(arg2[0]=='\0'){exit(0);}
+            else{PLATFORM_COLOR_RED();
+                printf("--VM: [ERR]: exit: Unknown argument: %s--\n",arg2);PLATFORM_COLOR_RESET();
+                PLATFORM_COLOR_GREEN();("--STR:\n  %s %s %s %s %s--\n\n",arg1,arg2,arg3,arg4,arg5);
+                PLATFORM_COLOR_RESET();return 1;
+            }
+        }else if(o==OP_CLEAR_SCREEN){PLATFORM_CLEAR_SCREEN();}
+        else if(o==OP_PRINT_OS){printf(OS_NAME);}
+        else if(o==OPBITS){printf(ARCH_BITS);}
+        else{PLATFORM_COLOR_RED();printf("\n\n--VM: [ERR]: Unknown opcode--\n");PLATFORM_COLOR_RESET();
+            PLATFORM_COLOR_YELLOW();printf("--The opcode was not found in the VM instruction table--\n\n");PLATFORM_COLOR_RESET();
+            printf("Execution stopped\n");printf("----------------------\n\n");return 0;
+        }
+     }
 
 }
 void main() {
@@ -239,7 +313,7 @@ void main() {
                     fgets(s, sizeof(s), stdin);
                     s[strcspn(s, "\n")] = 0;
                     if (strcmp(s, "exit") == 0) break;
-                    cs=0;arg_i=0;raz();run();
+                    cs=0;arg_i=0;raz(s);run();
                 }
                 break;
             case 2:
@@ -260,7 +334,7 @@ void main() {
                     arg_i = 0;
     			    while (fgets(s, sizeof(s), f)) { 
         		    s[strcspn(s, "\n")] = 0;
-        		    raz();
+        		    raz(s);
                     }
                     printf("\n-------------------\n");
                     run();
@@ -279,13 +353,14 @@ void main() {
                 if (!f4) { puts("Файл не найден"); break; }
                 while (fgets(s, sizeof(s), f4)) {
                     s[strcspn(s, "\n")] = 0;
-                    raz();
+                    raz(s);
                 }
                 fclose(f4);
                 save_sbc("programm.fx");
                 break;
             case 5:
                 load_sbc("programm.fx");
+                puts("OUTPUT----------------\n");
                 run();
                 break;
             default:puts("Неизвестная команда");   
