@@ -7,7 +7,7 @@ It is a lightweight programming language, compiled into custom bytecode and exec
 To compile the project, use `gcc`:
 
 ```bash
-gcc -o EMERALD-LANG main.c gvar.c lexcompiler.c
+gcc -o EMERALD-LANG src/main.c src/gvar.c src/lexcompiler.c
 ```
 
 ### Run
